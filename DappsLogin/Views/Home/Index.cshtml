@@ -1,0 +1,115 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<div class="text-center">
+    <h1 class="display-4">Welcome</h1>
+    <p>Learn about <a href="https://docs.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+</div>
+
+<div>
+    <button class="enableEthereumButton">LogIn</button>
+    <label id="lbl_connection_status">NOT CONNECTED</label>
+</div>
+<div id="data-view">
+    <button type="submit" id="load_data_btn" class="load_data_btn">Request secured data</button>
+    <label id="lbl_status"></label>
+    <ul class="data_list">
+    </ul>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+<!--from browserify */ -->
+<script src="~/js/ethereumjs-util.js"></script>
+<script src="https://bundle.run/buffer@6.0.3"></script>
+<script>
+    let account = null;
+    let accessToken = null;
+
+    const ethereumButton = document.querySelector('.enableEthereumButton');
+    const lbl_connection_status = document.getElementById('lbl_connection_status');
+    ethereumButton.addEventListener('click', async () => {
+        //Will Start the metamask extension
+        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+        const account = accounts[0];
+
+
+        // https://ethereum.stackexchange.com/questions/94434/metamask-eth-sign-cant-make-it-work
+        const message = "Hi there from DAppsLogin! Sign this message to prove you have access to this wallet and we will log you in. This will not cost you any Ether.To stop hackers using your wallet, here is a unique message ID they cannot guess:@Guid.NewGuid().ToString()";
+
+        let a = buffer.Buffer.from(message, 'utf8');
+        let msg = EthJS.Util.bufferToHex(a);
+        let b = EthJS.Util.keccak256(buffer.Buffer.from("\x19Ethereum Signed Message:\n" + message.length + message));
+        let hash = EthJS.Util.bufferToHex(b);
+
+
+        const signature = await ethereum.request({ method: 'personal_sign', params: [message, account] });
+
+        console.log(signature);
+
+        let loginData = {};
+        loginData.signer = account;
+        loginData.signature = signature;
+        loginData.message = msg;
+        loginData.hash = hash;
+
+        fetch('https://localhost:44343/Token/CreateToken', {
+            method: 'POST',
+            body: JSON.stringify(loginData),
+            headers: {
+                'Content-type': 'application/json'
+            }
+        })
+        .then((response) => {
+            if (response.status == 200) {   
+                return response.json();
+            }
+            else {
+                lbl_connection_status.innerHTML = `error with status ${response.status}`;
+                throw `error with status ${response.status}`;
+            }
+        })
+        .then(data => {              
+            accessToken = data.token;
+            console.log('access token: ' + accessToken);
+            lbl_connection_status.innerHTML = 'CONNECTED';
+            ethereumButton.innerHTML = 'LOGGED';
+        })                                 
+        .catch((exception) => {
+            console.log(exception);
+            lbl_connection_status.innerHTML = exception;
+        });
+
+    });
+    const secretButton = document.querySelector('.load_data_btn');
+    let data_list = document.querySelector('.data_list');
+    let status_label = document.getElementById('lbl_status');
+    secretButton.addEventListener('click', async () => {
+        fetch('https://localhost:44343/Home/Secret', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + accessToken,
+                'Content-type': 'application/json'
+            }
+        })
+        .then((response) => {
+            if (response.status == 200) {
+                return response.json();
+            }
+            else {
+                status_label.innerHTML = `error with status ${response.status}`;
+                throw `error with status ${response.status}`;
+            }
+        })
+        .then(data => {
+            for (let i = 0; i < data.length; i++) {
+                data_list.innerHTML += '<li>' + data[i] + '</li>';
+            }
+            status_label.innerHTML = `DONE`;
+        })
+        .catch((exception) => {
+            console.log(exception);
+            status_label.innerHTML = exception;
+        });
+    });
+</script>
